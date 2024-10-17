@@ -20,10 +20,12 @@
 Quick install to try our [pretrained world models](#try) using [miniconda](https://docs.anaconda.com/free/miniconda/miniconda-install/):
 
 >```bash
->git clone git@github.com:eloialonso/diamond.git
->cd diamond
->conda create -n diamond python=3.10
->conda activate diamond
+>git clone https://github.com/AntoniovanDijck/diamond-macos.git
+>cd diamond-macos
+>conda create -n diamond-macos python=3.10
+>conda activate diamond-macos
+>python -m venv venv
+>source venv/bin/activate
 >pip install -r requirements.txt
 >```
 
@@ -37,7 +39,7 @@ For CSGO (world model only)
 
 >```bash
 >git checkout csgo
->python src/play.py
+>PYTORCH_ENABLE_MPS_FALLBACK=1 python src/play.py 
 >```
 
 And press `m` to take control (the policy is playing by default)!
