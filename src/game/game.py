@@ -62,7 +62,7 @@ class Game:
             screen.blit(font.render(text, True, pygame.Color("white")), (x_header + x_pos, y_header + y_pos))
  
         def draw_obs(obs, obs_low_res=None):
-            # Optimaliseer beeldverwerking
+            # Optimised image processing
             img = Image.fromarray(obs[0].add(1).div(2).mul(255).byte().permute(1, 2, 0).cpu().numpy())
             pygame_image = np.array(img.resize((self.width, self.height), resample=Image.BICUBIC)).transpose((1, 0, 2))
             surface = pygame.surfarray.make_surface(pygame_image)
