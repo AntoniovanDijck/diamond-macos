@@ -41,14 +41,14 @@ For CSGO (world model only) - MacOS
 
 >```bash
 >git checkout csgo
->PYTORCH_ENABLE_MPS_FALLBACK=1 python src/play.py 
+>python src/play.py 
 >```
 
 CSGO - OPTIMAL EXPERIENCE
 
 >```bash
 >git checkout csgo
->PYTORCH_ENABLE_MPS_FALLBACK=1 python src/play.py --no-header --size-multiplier 2
+>python src/play.py --no-header --size-multiplier 2
 >```
 
 And press `m` to take control (the policy is playing by default)!
