@@ -2,8 +2,7 @@ from typing import Tuple, Union
 
 import numpy as np
 import pygame
-from PIL import Image
-
+import torch  # Added torch import
 from csgo.action_processing import CSGOAction
 from .dataset_env import DatasetEnv
 from .play_env import PlayEnv
@@ -39,9 +38,10 @@ class Game:
         header_height = 150 if self.verbose else 0
         header_width = 540
         font_size = 16
-        screen = pygame.display.set_mode((0, 0)
-                                         #, pygame.FULLSCREEN
-                                         )
+        screen = pygame.display.set_mode(
+            (0, 0)
+            # , pygame.FULLSCREEN
+        )
         pygame.mouse.set_visible(False)
         pygame.event.set_grab(True)
         clock = pygame.time.Clock()
@@ -51,6 +51,11 @@ class Game:
         y_header = y_center - self.height // 2 - header_height - 10
         header_rect = pygame.Rect(x_header, y_header, header_width, header_height)
 
+        # Preallocate surfaces
+        self.main_surface = pygame.Surface((self.width, self.height))
+        if self.verbose:
+            self.low_res_surface = None  # Will initialize when needed
+
         def clear_header():
             pygame.draw.rect(screen, pygame.Color("black"), header_rect)
             pygame.draw.rect(screen, pygame.Color("white"), header_rect, 1)
@@ -59,22 +64,63 @@ class Game:
             x_pos = 5 + idx_column * int(header_width // num_cols)
             y_pos = 5 + idx_line * font_size
             assert (0 <= x_pos <= header_width) and (0 <= y_pos <= header_height)
-            screen.blit(font.render(text, True, pygame.Color("white")), (x_header + x_pos, y_header + y_pos))
- 
+            screen.blit(
+                font.render(text, True, pygame.Color("white")),
+                (x_header + x_pos, y_header + y_pos),
+            )
+
         def draw_obs(obs, obs_low_res=None):
-            # Optimised image processing
-            img = Image.fromarray(obs[0].add(1).div(2).mul(255).byte().permute(1, 2, 0).cpu().numpy())
-            pygame_image = np.array(img.resize((self.width, self.height), resample=Image.BICUBIC)).transpose((1, 0, 2))
-            surface = pygame.surfarray.make_surface(pygame_image)
-            screen.blit(surface, (x_center - self.width // 2, y_center - self.height // 2))
+            # Resize obs using PyTorch's interpolate
+            obs_resized = torch.nn.functional.interpolate(
+                obs,
+                size=(self.height, self.width),
+                mode="bilinear", #edit to bicubic for cuda
+                align_corners=False,
+            )
+            # Convert to numpy array
+            array = (
+                obs_resized[0]
+                .mul(127.5)
+                .add(127.5)
+                .clamp(0, 255)
+                .byte()
+                .cpu()
+                .permute(1, 2, 0)
+                .numpy()
+            )
+            # Update surface pixels
+            pygame.surfarray.blit_array(self.main_surface, array.swapaxes(0, 1))
+            screen.blit(
+                self.main_surface,
+                (x_center - self.width // 2, y_center - self.height // 2),
+            )
 
             if obs_low_res is not None:
-                img = Image.fromarray(obs_low_res[0].add(1).div(2).mul(255).byte().permute(1, 2, 0).cpu().numpy())
-                h = self.height * obs_low_res.size(2) // obs.size(2)
-                w = self.width * obs_low_res.size(3) // obs.size(3)
-                pygame_image = np.array(img.resize((w, h), resample=Image.BICUBIC)).transpose((1, 0, 2))
-                surface = pygame.surfarray.make_surface(pygame_image)
-                screen.blit(surface, (x_header + header_width - w - 5, y_header + 5 + font_size))
+                if self.low_res_surface is None:
+                    h = self.height * obs_low_res.size(2) // obs.size(2)
+                    w = self.width * obs_low_res.size(3) // obs.size(3)
+                    self.low_res_surface = pygame.Surface((w, h))
+                obs_low_res_resized = torch.nn.functional.interpolate(
+                    obs_low_res,
+                    size=(self.low_res_surface.get_height(), self.low_res_surface.get_width()),
+                    mode="bilinear", #edit to bicubic for cuda
+                    align_corners=False,
+                )
+                array_low_res = (
+                    obs_low_res_resized[0]
+                    .mul(127.5)
+                    .add(127.5)
+                    .clamp(0, 255)
+                    .byte()
+                    .cpu()
+                    .permute(1, 2, 0)
+                    .numpy()
+                )
+                pygame.surfarray.blit_array(self.low_res_surface, array_low_res.swapaxes(0, 1))
+                screen.blit(
+                    self.low_res_surface,
+                    (x_header + header_width - self.low_res_surface.get_width() - 5, y_header + 5 + font_size),
+                )
 
         def reset():
             nonlocal obs, info, do_reset, ep_return, ep_length, keys_pressed, l_click, r_click
@@ -98,7 +144,9 @@ class Game:
             pygame.event.pump()
 
             for event in pygame.event.get():
-                if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
+                if event.type == pygame.QUIT or (
+                    event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE
+                ):
                     should_stop = True
 
                 if event.type == pygame.MOUSEMOTION:
@@ -120,7 +168,7 @@ class Game:
 
                 if event.type == pygame.KEYDOWN:
                     keys_pressed.append(event.key)
-                
+
                 elif event.type == pygame.KEYUP and event.key in keys_pressed:
                     keys_pressed.remove(event.key)
 
@@ -160,7 +208,7 @@ class Game:
 
             csgo_action = CSGOAction(keys_pressed, mouse_x, mouse_y, l_click, r_click)
             next_obs, rew, end, trunc, info = self.env.step(csgo_action)
-            
+
             ep_return += rew.item()
             ep_length += 1
 
@@ -172,7 +220,11 @@ class Game:
                     for i, row in enumerate(col):
                         draw_text(row, idx_line=i, idx_column=j, num_cols=num_cols)
 
-            draw_low_res = self.verbose and "obs_low_res" in info and self.width == 280
+            draw_low_res = (
+                self.verbose
+                and "obs_low_res" in info
+                and self.width == 280
+            )
             if draw_low_res:
                 draw_obs(obs, info["obs_low_res"])
                 draw_text("  Pre-upsampling:", 0, 2, 3)
