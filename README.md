@@ -44,6 +44,13 @@ For CSGO (world model only) - MacOS
 >PYTORCH_ENABLE_MPS_FALLBACK=1 python src/play.py 
 >```
 
+CSGO - OPTIMAL EXPERIENCE
+
+>```bash
+>git checkout csgo
+>PYTORCH_ENABLE_MPS_FALLBACK=1 python src/play.py --no-header --size-multiplier 2
+>```
+
 And press `m` to take control (the policy is playing by default)!
 
 **Warning**: Atari ROMs will be downloaded with the dependencies, which means that you acknowledge that you have the license to use them.
