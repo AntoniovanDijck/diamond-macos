@@ -118,7 +118,7 @@ class WorldModelEnv:
 
     @torch.no_grad()
     def upsample_next_obs(self, next_obs: Tensor) -> Tuple[Tensor, List[Tensor]]:
-        low_res = F.interpolate(next_obs, scale_factor=self.sampler_upsampling.denoiser.cfg.upsampling_factor, mode="bicubic").unsqueeze(1)
+        low_res = F.interpolate(next_obs, scale_factor=self.sampler_upsampling.denoiser.cfg.upsampling_factor, mode="bilinear").unsqueeze(1) #switch to bilinear instead of bicubic for mps support
         return self.sampler_upsampling.sample(torch.cat((self.obs_full_res_buffer[:, self.n_skip_upsampling:], low_res), dim=1), None)
 
     @torch.no_grad()
