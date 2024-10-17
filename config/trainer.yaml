@@ -2,7 +2,7 @@ defaults:
   - _self_
   - env: csgo
   - agent: csgo
-  - world_model_env: default #default/fast
+  - world_model_env: fast #default/fast
 
 hydra:
   job:
