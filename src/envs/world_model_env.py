@@ -56,7 +56,7 @@ class WorldModelEnv:
 
     @torch.no_grad()
     def reset(self, **kwargs) -> ResetOutput:
-        # Gebruik asynchrone I/O of laad gegevens in batches
+        # USE asynchrone I/O or load stuff in batches
         obs, obs_full_res, act, next_act, (hx, cx) = self.generator_init.send(self.num_envs)
         self.obs_buffer = obs
         self.act_buffer = act
@@ -70,7 +70,7 @@ class WorldModelEnv:
 
     @torch.no_grad()
     def step(self, act: torch.LongTensor) -> StepOutput:
-        # Zorg ervoor dat alle tensorbewerkingen op de GPU worden uitgevoerd
+        # TENSOR + GPU = <3
         act = act.to(self.device)
         self.act_buffer[:, -1] = act
 
@@ -85,7 +85,7 @@ class WorldModelEnv:
             rew = torch.zeros(next_obs.size(0), dtype=torch.float32, device=self.device)
             end = torch.zeros(next_obs.size(0), dtype=torch.int64, device=self.device)
         
-        # Gebruik in-place bewerkingen waar mogelijk
+        # in-place adjustamentos
         self.ep_len.add_(1)
         trunc = (self.ep_len >= self.horizon).long()
 
@@ -111,7 +111,7 @@ class WorldModelEnv:
 
     @torch.no_grad()
     def predict_next_obs(self) -> Tuple[Tensor, List[Tensor]]:
-        # Zorg ervoor dat de invoer op de juiste apparaat is
+        # input must be right device
         obs_buffer = self.obs_buffer[:, self.n_skip_next_obs:].to(self.device)
         act_buffer = self.act_buffer[:, self.n_skip_next_obs:].to(self.device)
         return self.sampler_next_obs.sample(obs_buffer, act_buffer)
