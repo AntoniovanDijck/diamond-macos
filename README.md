@@ -19,6 +19,8 @@
 
 Quick install to try our [pretrained world models](#try) using [miniconda](https://docs.anaconda.com/free/miniconda/miniconda-install/):
 
+Mac-OS Instructions:
+
 >```bash
 >git clone https://github.com/AntoniovanDijck/diamond-macos.git
 >cd diamond-macos
@@ -35,7 +37,7 @@ For Atari (world model + RL agent)
 >python src/play.py --pretrained
 >```
 
-For CSGO (world model only)
+For CSGO (world model only) - MacOS
 
 >```bash
 >git checkout csgo
