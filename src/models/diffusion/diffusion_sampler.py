@@ -30,12 +30,12 @@ class DiffusionSampler:
 
     @torch.no_grad()
     def sample(self, prev_obs: Tensor, prev_act: Optional[Tensor]) -> Tuple[Tensor, List[Tensor]]:
-        device = self.device  # Gebruik cached device
+        device = self.device  # use cached device
         b, t, c, h, w = prev_obs.size()
         prev_obs = prev_obs.reshape(b, t * c, h, w)
         s_in = torch.ones(b, device=device)
         gamma_ = min(self.cfg.s_churn / (len(self.sigmas) - 1), 2**0.5 - 1)
-        x = torch.randn(b, c, h, w, device=device, dtype=torch.float16)  # Gebruik mixed precision
+        x = torch.randn(b, c, h, w, device=device, dtype=torch.float16)  # use mixed precision
         trajectory = [x]
         sigma_cond = torch.full((b,), fill_value=self.cfg.s_cond, device=device) if self.cfg.s_cond > 0 else None
 
@@ -51,10 +51,10 @@ class DiffusionSampler:
             d = (x - denoised) / sigma_hat
             dt = next_sigma - sigma_hat
             if self.cfg.order == 1 or next_sigma == 0:
-                # Euler methode
+                # Euler method
                 x = x + d * dt
             else:
-                # Heun's methode
+                # Heun's method
                 x_2 = x + d * dt
                 denoised_2 = self.denoiser.denoise(x_2, next_sigma * s_in, sigma_cond, prev_obs, prev_act)
                 d_2 = (x_2 - denoised_2) / next_sigma
