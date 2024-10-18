@@ -3,9 +3,9 @@ from typing import List, Optional, Tuple
 
 import torch
 from torch import Tensor
-import torch.cuda.amp as amp  # Added for AMP
 
 from .denoiser import Denoiser
+
 
 @dataclass
 class DiffusionSamplerConfig:
@@ -25,38 +25,43 @@ class DiffusionSampler:
     def __init__(self, denoiser: Denoiser, cfg: DiffusionSamplerConfig) -> None:
         self.denoiser = denoiser
         self.cfg = cfg
-        self.sigmas = build_sigmas(cfg.num_steps_denoising, cfg.sigma_min, cfg.sigma_max, cfg.rho, denoiser.device)
         self.device = denoiser.device  # Cache device for reuse
+        self.sigmas = build_sigmas(
+            cfg.num_steps_denoising,
+            cfg.sigma_min,
+            cfg.sigma_max,
+            cfg.rho,
+            self.device
+        )
 
     @torch.no_grad()
     def sample(self, prev_obs: Tensor, prev_act: Optional[Tensor]) -> Tuple[Tensor, List[Tensor]]:
         device = self.device  # use cached device
         b, t, c, h, w = prev_obs.size()
-        prev_obs = prev_obs.reshape(b, t * c, h, w)
-        s_in = torch.ones(b, device=device)
+        prev_obs = prev_obs.reshape(b, t * c, h, w).to(device, dtype=torch.float32)
+        s_in = torch.ones(b, device=device, dtype=torch.float32)
         gamma_ = min(self.cfg.s_churn / (len(self.sigmas) - 1), 2**0.5 - 1)
-        x = torch.randn(b, c, h, w, device=device, dtype=torch.float16)  # use mixed precision
-        trajectory = [x]
-        sigma_cond = torch.full((b,), fill_value=self.cfg.s_cond, device=device) if self.cfg.s_cond > 0 else None
+        x = torch.randn(b, c, h, w, device=device, dtype=torch.float32)  # Use float32 precision
+        trajectory = [x.clone()]
+        sigma_cond = torch.full(
+            (b,), fill_value=self.cfg.s_cond, device=device, dtype=torch.float32
+        ) if self.cfg.s_cond > 0 else None
 
         # Pre-allocate noise buffer for re-use
         noise_buffer = torch.empty_like(x)
-        scaler = amp.GradScaler('cuda')  # Updated to use the new constructor
 
-        for sigma, next_sigma in zip(self.sigmas[:-1], self.sigmas[1:]):
+        for idx, (sigma, next_sigma) in enumerate(zip(self.sigmas[:-1], self.sigmas[1:])):
             gamma = gamma_ if self.cfg.s_tmin <= sigma <= self.cfg.s_tmax else 0
             sigma_hat = sigma * (gamma + 1)
 
             if gamma > 0:
                 eps = torch.randn_like(noise_buffer) * self.cfg.s_noise
-                x = x + eps * (sigma_hat**2 - sigma**2) ** 0.5
+                x = x + eps * (sigma_hat**2 - sigma**2).sqrt()
 
             if sigma_cond is not None:
                 prev_obs = self.denoiser.apply_noise(prev_obs, sigma_cond, sigma_offset_noise=0)
 
-            # Use AMP context for mixed precision
-            with amp.autocast('cuda'): 
-                denoised = self.denoiser.denoise(x, sigma, sigma_cond, prev_obs, prev_act)
+            denoised = self.denoiser.denoise(x, sigma, sigma_cond, prev_obs, prev_act)
 
             d = (x - denoised) / sigma_hat
             dt = next_sigma - sigma_hat
@@ -67,14 +72,12 @@ class DiffusionSampler:
             else:
                 # Heun's method
                 x_2 = x + d * dt
-                with amp.autocast('cuda'):  # Updated to use the new autocast syntax
-                    denoised_2 = self.denoiser.denoise(x_2, next_sigma * s_in, sigma_cond, prev_obs, prev_act)
-
+                denoised_2 = self.denoiser.denoise(x_2, next_sigma * s_in, sigma_cond, prev_obs, prev_act)
                 d_2 = (x_2 - denoised_2) / next_sigma
                 d_prime = (d + d_2) / 2
                 x = x + d_prime * dt
 
-            trajectory.append(x)
+            trajectory.append(x.clone())
 
         return x, trajectory
 
@@ -83,7 +86,7 @@ def build_sigmas(num_steps: int, sigma_min: float, sigma_max: float, rho: int, d
     """Optimized sigma calculation."""
     min_inv_rho = sigma_min ** (1 / rho)
     max_inv_rho = sigma_max ** (1 / rho)
-    l = torch.linspace(0, 1, num_steps, device=device)
+    l = torch.linspace(0, 1, num_steps, device=device, dtype=torch.float32)
     sigmas = (max_inv_rho + l * (min_inv_rho - max_inv_rho)) ** rho
-    sigmas = torch.cat((sigmas, sigmas.new_zeros(1)), dim=0)  # Append a zero at the end
+    sigmas = torch.cat((sigmas, torch.zeros(1, device=device, dtype=torch.float32)), dim=0)  # Append a zero at the end
     return sigmas
